@@ -9,7 +9,7 @@ plugins {
  * 版本名可以重置，版本码始终递增，保证覆盖安装
  */
 val appVersionName = "0.0.9"
-val appVersionCode = 153
+val appVersionCode = 154
 
 /**
  * 从根目录的 keystore.properties 读取签名，缺少时使用 debug 签名
@@ -21,6 +21,19 @@ val keystoreProps =
         if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
     }
 val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
+// CI 只有显式要求固定签名，且提供四项完整凭据时才允许出正式签名包。
+// 默认 smoke 仍用临时调试签名，不得被发布为在线升级候选。
+val traceFixedSigning = providers.gradleProperty("traceFixedSigning").orNull == "true"
+val traceStoreFile = System.getenv("TRACE_SIGNING_STORE_FILE")
+val traceStorePassword = System.getenv("TRACE_SIGNING_STORE_PASSWORD")
+val traceKeyAlias = System.getenv("TRACE_SIGNING_KEY_ALIAS")
+val traceKeyPassword = System.getenv("TRACE_SIGNING_KEY_PASSWORD")
+if (traceFixedSigning) {
+    require(!traceStoreFile.isNullOrBlank() && !traceStorePassword.isNullOrBlank() &&
+        !traceKeyAlias.isNullOrBlank() && !traceKeyPassword.isNullOrBlank()) {
+        "TRACE_FIXED_SIGNING_MISSING: refusing unsigned/debug fallback"
+    }
+}
 
 android {
     namespace = "io.github.shaonialife.buicklinkplus"
@@ -43,6 +56,14 @@ android {
     }
 
     signingConfigs {
+        if (traceFixedSigning) {
+            create("traceFixed") {
+                storeFile = rootProject.file(traceStoreFile!!)
+                storePassword = traceStorePassword
+                keyAlias = traceKeyAlias
+                keyPassword = traceKeyPassword
+            }
+        }
         if (hasReleaseKeystore) {
             create("release") {
                 storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
@@ -68,8 +89,8 @@ android {
         create("trace") {
             initWith(getByName("release"))
             applicationIdSuffix = ".buick.trace"
-            versionNameSuffix = "-trace-r2"
-            signingConfig = signingConfigs.getByName("debug")
+            versionNameSuffix = "-trace-r3"
+            signingConfig = signingConfigs.getByName(if (traceFixedSigning) "traceFixed" else "debug")
             resValue("string", "app_name", "Buick Link + Trace")
             matchingFallbacks += listOf("release")
         }

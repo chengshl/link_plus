@@ -1236,6 +1236,19 @@ class MainActivity : GlassActivity() {
             }
         }
         about.addView(gatewaySettings)
+        val updateCenter = TextView(this).apply {
+            text = "软件更新 · 固定签名 / 检查新版本"
+            textSize = 16f
+            val pad = (14 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+            setOnClickListener {
+                startActivity(android.content.Intent(
+                    this@MainActivity,
+                    io.github.shaonialife.buicklinkplus.update.TraceUpdateCenterActivity::class.java,
+                ))
+            }
+        }
+        about.addView(updateCenter)
         move(findViewById(R.id.btnDisclaimer), about)
         homeDashboard =
             PhoneHomeDashboard(this, detail, onOpen = { id ->
@@ -3016,6 +3029,7 @@ class MainActivity : GlassActivity() {
 
     override fun onResume() {
         super.onResume()
+        io.github.shaonialife.buicklinkplus.update.TraceUpdater.maybeAutoCheck(this)
         mainHandler.post(heroTick)
         // 生命周期在 onResume 返回后才进入 RESUMED，下一次主线程调度再检查前台状态
         mainHandler.post { restoreServiceOnAppOpen() }

@@ -3,6 +3,8 @@
 
     <!-- 无线 CarPlay 全链路：蓝牙 RFCOMM（iAP2 控制通道）+ WiFi（热点加入 / mDNS） -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 只有用户手动下载安装时才调用系统安装器 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -82,6 +84,15 @@
 
         <!-- 用户主动配置日志上传：无外部 exported 入口、独立凭证存储 -->
         <activity android:name=".gateway.GatewaySettingsActivity" android:exported="false" />
+        <activity android:name=".update.TraceUpdateCenterActivity" android:exported="false" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.traceupdate"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/trace_update_paths" />
+        </provider>
         <activity android:name=".ui.WallpaperActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode" android:exported="false" />
 
         <!-- 车机设置（手机侧）：二级菜单页 + 内容 Fragment 宿主（与车机双栏共用面板）。

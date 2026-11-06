@@ -1,0 +1,143 @@
+name: Link Plus Trace fixed-signed prerelease
+
+on:
+  push:
+    branches:
+      - experiment/link-plus-trace-fixed-update-20261107
+    paths:
+      - 'app/**'
+      - '.github/workflows/trace-fixed-release.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: link-plus-trace-fixed-signing
+  cancel-in-progress: false
+
+jobs:
+  signed-trace:
+    if: github.ref == 'refs/heads/experiment/link-plus-trace-fixed-update-20261107'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TRACE_SIGNING_PUBLISH_APPROVED: ${{ secrets.TRACE_SIGNING_PUBLISH_APPROVED }}
+      TRACE_SIGNING_KEYSTORE_B64: ${{ secrets.TRACE_SIGNING_KEYSTORE_B64 }}
+      TRACE_SIGNING_STORE_PASSWORD: ${{ secrets.TRACE_SIGNING_STORE_PASSWORD }}
+      TRACE_SIGNING_KEY_ALIAS: ${{ secrets.TRACE_SIGNING_KEY_ALIAS }}
+      TRACE_SIGNING_KEY_PASSWORD: ${{ secrets.TRACE_SIGNING_KEY_PASSWORD }}
+      EXPECTED_CERT_SHA256: 3fc11b60da53fd634d668bde7f7e9e19f6ed042d59502de2797b949e53e482e3
+       EXPECTED_PACKAGE: io.github.shaonialife.buicklinkplus.buick.trace
+      APK_NAME: LinkPlus-Trace.apk
+    steps:
+      - name: Checkout reviewed fixed-update branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [[ -z "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          fi
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install "platforms;android-34" "build-tools;35.0.0" "ndk;27.0.12077973"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Require stable private signing material
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TRACE_SIGNING_PUBLISH_APPROVED" == "YES" ]] || { echo "::error::Explicit TRACE_SIGNING_PUBLISH_APPROVED=YES is required"; exit 2; }
+          for value in TRACE_SIGNING_KEYSTORE_B64 TRACE_SIGNING_STORE_PASSWORD TRACE_SIGNING_KEY_ALIAS TRACE_SIGNING_KEY_PASSWORD; do
+            if [[ -z "${!value:-}" ]]; then
+              echo "::error::Missing GitHub Actions secret $value; NO debug fallback"
+              exit 2
+            fi
+          done
+          umask 077
+          keyfile="$RUNNER_TEMP/linkplus-trace-release.p12"
+          printf '%s' "$TRACE_SIGNING_KEYSTORE_B64" | base64 --decode > "$keyfile"
+          test -s "$keyfile"
+          echo "TRACE_SIGNING_STORE_FILE=$keyfile" >> "$GITHUB_ENV"
+          keytool -list -v -keystore "$keyfile" -storetype PKCS12 -storepass "$TRACE_SIGNING_STORE_PASSWORD"             | grep 'SHA256:' | tr -d ':' | tr '[:upper:]' '[:lower:]'             | grep -q "$EXPECTED_CERT_SHA256" || { echo "::error::Fixed signing certificate fingerprint mismatch"; exit 3; }
+
+      - name: Compile tests and FIXED-SIGNED Trace APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace -PtraceFixedSigning=true :app:testTraceUnitTest :app:assembleTrace
+
+      - name: Verify exact signed APK identity and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/trace/app-trace.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apksigner-check.txt"
+          sed -n '/Verified using v2 scheme/p; /Verified using v3 scheme/p' "$RUNNER_TEMP/apksigner-check.txt"
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/apksigner-check.txt"
+          actual_cert="$(grep -m1 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner-check.txt" | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')"
+          [[ "$actual_cert" == "$EXPECTED_CERT_SHA256" ]] || { echo "::error::Wrong certificate"; exit 4; }
+          EXPECTED_VERSION_CODE="$(sed -nE 's/^val appVersionCode = ([0-9]+)$/\1/p' app/build.gradle.kts)"
+          [[ "$EXPECTED_VERSION_CODE" =~ ^[0-9]+$ && "$EXPECTED_VERSION_CODE" -ge 154 ]] || { echo "::error::Invalid or stale appVersionCode"; exit 4; }
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='$EXPECTED_PACKAGE' versionCode='$EXPECTED_VERSION_CODE'" "$RUNNER_TEMP/apk-badging.txt"
+          version_name="$(sed -nE "s/.*versionName='([^']+)'.*/\1/p" "$RUNNER_TEMP/apk-badging.txt" | head -1)"
+          [[ -n "$version_name" ]] || exit 4
+          echo "EXPECTED_VERSION_CODE=$EXPECTED_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "TRACE_VERSION_NAME=$version_name" >> "$GITHUB_ENV"
+          mkdir -p dist
+          cp "$apk" "dist/$APK_NAME"
+          (cd dist && sha256sum "$APK_NAME" > "$APK_NAME.sha256")
+          cat "dist/$APK_NAME.sha256"
+
+      - name: Publish immutable schema-2 trace prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shortsha="${GITHUB_SHA:0:12}"
+          tag="exp-link-plus-trace-v${EXPECTED_VERSION_CODE}-${shortsha}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release already exists. Do not replace or mutate a published artifact."
+            exit 5
+          fi
+          digest="$(cut -d' ' -f1 dist/"$APK_NAME.sha256")"
+          built_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          cat > "$RUNNER_TEMP/release-notes.txt" <<EOF
+          updaterSchema=2
+          artifactKind=experiment
+          baseBranch=experiment/link-plus-protocol-trace-20261106
+          sourceBranch=experiment/link-plus-trace-fixed-update-20261107
+          applicationId=$EXPECTED_PACKAGE
+          versionCode=$EXPECTED_VERSION_CODE
+          versionName=$TRACE_VERSION_NAME
+          builtAt=$built_at
+          commit=$GITHUB_SHA
+          certificateSha256=$EXPECTED_CERT_SHA256
+          sha256=$digest
+          summary=Trace 诊断、Gateway 自动上报与固定签名在线更新
+          EOF
+          gh release create "$tag" "dist/$APK_NAME" "dist/$APK_NAME.sha256"             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"             --prerelease --title "Link Plus Trace fixed-signed (${EXPECTED_VERSION_CODE})"             --notes-file "$RUNNER_TEMP/release-notes.txt"
+
+      - name: Remove local signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${TRACE_SIGNING_STORE_FILE:-}" ]]; then
+            rm -f "$TRACE_SIGNING_STORE_FILE"
+          fi

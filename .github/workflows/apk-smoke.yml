@@ -1,9 +1,10 @@
-name: Link Plus protocol trace APK build
+name: Link Plus protocol trace / updater smoke APK build
 
 on:
   push:
     branches:
       - experiment/link-plus-protocol-trace-20261106
+      - experiment/link-plus-trace-fixed-update-20261107
 
 permissions:
   contents: read
