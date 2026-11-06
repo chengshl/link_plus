@@ -27,7 +27,7 @@ jobs:
       TRACE_SIGNING_KEY_ALIAS: ${{ secrets.TRACE_SIGNING_KEY_ALIAS }}
       TRACE_SIGNING_KEY_PASSWORD: ${{ secrets.TRACE_SIGNING_KEY_PASSWORD }}
       EXPECTED_CERT_SHA256: 3fc11b60da53fd634d668bde7f7e9e19f6ed042d59502de2797b949e53e482e3
-       EXPECTED_PACKAGE: io.github.shaonialife.buicklinkplus.buick.trace
+      EXPECTED_PACKAGE: io.github.shaonialife.buicklinkplus.buick.trace
       APK_NAME: LinkPlus-Trace.apk
     steps:
       - name: Checkout reviewed fixed-update branch
