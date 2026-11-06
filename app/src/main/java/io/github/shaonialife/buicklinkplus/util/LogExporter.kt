@@ -109,6 +109,8 @@ object LogExporter {
                 append(fallbackText)
             }
             appendLine()
+            appendLine("================ 协议追踪（仅元数据，不含密钥和原始载荷） ================")
+            appendLine(ProtocolTrace.export(context, scope == Scope.CURRENT_SESSION))
             appendLine("================ SHELL-INPUT 输入诊断 ================")
             appendLine("采集经过时间=${android.os.SystemClock.elapsedRealtime()}ms；只读末尾 ${ShellInputLogExcerpt.MAX_BYTES} 字节")
             appendLine(collectInputDiagnostics(context))
