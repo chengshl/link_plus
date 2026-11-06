@@ -19,6 +19,7 @@ import io.github.shaonialife.buicklinkplus.render.DisplayAreas
 import io.github.shaonialife.buicklinkplus.render.PixelArea
 import io.github.shaonialife.buicklinkplus.session.SessionTermination
 import io.github.shaonialife.buicklinkplus.util.DeviceIdentity
+import io.github.shaonialife.buicklinkplus.util.ProtocolTrace
 import java.io.IOException
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -595,6 +596,8 @@ class AirPlayClient(
                     write(bytes)
                     flush()
                 }
+                val kind = (command["type"] as? String)?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,40}")) } ?: "other"
+                ProtocolTrace.event("EVENT-TX", "cseq=$eventCseq type=$kind bytes=${body.size}")
                 if (eventCommandSocket === socket && command["type"] == "hidSetInputMode") {
                     val uuid = (command["params"] as? Map<*, *>)?.get("uuid") as? String
                     if (uuid != null && uuid !in eventHidDeviceUuids) eventHidDeviceUuids = eventHidDeviceUuids + uuid
@@ -625,6 +628,7 @@ class AirPlayClient(
                     write(cipher?.encrypt(plaintext) ?: plaintext)
                     flush()
                 }
+                ProtocolTrace.event("EVENT-ACK", "cseq=${cseq?.toIntOrNull() ?: -1} status=200")
             }
         } catch (_: IOException) {
         }
@@ -2279,7 +2283,11 @@ class AirPlayClient(
                             val firstLine = message.firstLine
                             // (a) 状态行（"RTSP/1.0 200 OK" 等）= 车机对**我们命令**的应答：
                             //     静默跳过——不回、不记录（回应答会触发乒乓回声，见 respondEventRequest）
-                            if (firstLine.startsWith("RTSP/") || firstLine.startsWith("HTTP/")) continue
+                            if (firstLine.startsWith("RTSP/") || firstLine.startsWith("HTTP/")) {
+                                val code = Regex("[0-9]{3}").find(firstLine)?.value ?: "unknown"
+                                ProtocolTrace.event("EVENT-RX-ACK", "status=$code bytes=${message.body.size}")
+                                continue
+                            }
                             // (b) 请求判定：方法 token + "/"-开头路径。畸形行（如 "OK 200 OK"：
                             //     第 2 token 是数字）判为非请求 → 静默丢弃，不回不记
                             val tokens = firstLine.split(" ")
@@ -2287,6 +2295,7 @@ class AirPlayClient(
                             if (!isRequest) continue
                             // 车机请求：立即回 200（echo 请求 CSeq）；/command 走分发，其余节流留痕
                             val cseq = CSEQ_REGEX.find(message.head)?.groupValues?.get(1)
+                            ProtocolTrace.rtsp("EVENT-RX", tokens.first(), tokens[1], cseq?.toIntOrNull() ?: -1, message.body.size)
                             respondEventRequest(cseq)
                             if (!firstLine.contains("/command")) {
                                 unknownEventRequests++
@@ -2636,6 +2645,7 @@ class AirPlayClient(
                     } else {
                         plaintext
                     }
+                ProtocolTrace.rtsp("TX", method, path, cseq, body.size)
                 val output = client.getOutputStream()
                 output.write(wire)
                 output.flush()
@@ -2662,6 +2672,7 @@ class AirPlayClient(
         if (response.first == RTSP_CLOSED_MARK) {
             throw IOException("控制通道已关闭（CSeq=$cseq $method $path）")
         }
+        ProtocolTrace.rtsp("RX", method, path, cseq, response.second.size, response.first, elapsed)
         lastRequestCSeq.set(cseq)
         return response
     }
@@ -2758,6 +2769,12 @@ class AirPlayClient(
         head: String,
     ) {
         val message = RtspMessage(statusLine, body, head)
+        if (message.isRequest) {
+            val tokens = statusLine.split(" ")
+            ProtocolTrace.rtsp("RX-REQUEST", tokens.firstOrNull() ?: "", tokens.getOrNull(1) ?: "", message.cseq ?: -1, body.size)
+        } else {
+            ProtocolTrace.rtsp("RX-WIRE", "REPLY", "/", message.cseq ?: -1, body.size, statusLine)
+        }
         message.cseq?.let { responseHeads[it] = head }
         val queue = message.cseq?.let { pendingResponses[it] }
         if (queue != null) {
