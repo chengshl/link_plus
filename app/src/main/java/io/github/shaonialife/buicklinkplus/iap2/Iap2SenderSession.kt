@@ -1,6 +1,7 @@
 package io.github.shaonialife.buicklinkplus.iap2
 
 import io.github.shaonialife.buicklinkplus.transport.Iap2LinkChannel
+import io.github.shaonialife.buicklinkplus.util.ProtocolTrace
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.security.SecureRandom
@@ -579,6 +580,7 @@ class Iap2SenderSession(
                 else -> body.reduce { acc, bytes -> acc + bytes }
             }
         val frame = Iap2Csm.encode(messageId, joined)
+        ProtocolTrace.csm("TX", messageId, joined)
         val limit = channel.peerMaxControlPayload() ?: (frame.size - 1).coerceAtLeast(1)
         var offset = 0
         while (offset < frame.size) {
@@ -599,6 +601,7 @@ class Iap2SenderSession(
     ) {
         checkSessionActive()
         val frame = Iap2Csm.encode(messageId, body)
+        ProtocolTrace.csm("TX-NOACK", messageId, body)
         val limit = channel.peerMaxControlPayload() ?: (frame.size - 1).coerceAtLeast(1)
         var offset = 0
         while (offset < frame.size) {
@@ -716,6 +719,7 @@ class Iap2SenderSession(
         if (bytes == null) return null
         val frames = parser.offer(bytes)
         if (frames.isEmpty()) return null
+        frames.forEach { ProtocolTrace.csm("RX", it.messageId, it.body) }
         frames.forEachIndexed { index, frame -> if (index > 0) receivedFrames += frame }
         return frames.first()
     }
