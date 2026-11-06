@@ -2285,7 +2285,8 @@ class AirPlayClient(
                             //     静默跳过——不回、不记录（回应答会触发乒乓回声，见 respondEventRequest）
                             if (firstLine.startsWith("RTSP/") || firstLine.startsWith("HTTP/")) {
                                 val code = Regex("[0-9]{3}").find(firstLine)?.value ?: "unknown"
-                                ProtocolTrace.event("EVENT-RX-ACK", "status=$code bytes=${message.body.size}")
+                                val responseCseq = CSEQ_REGEX.find(message.head)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+                                ProtocolTrace.event("EVENT-RX-ACK", "cseq=$responseCseq status=$code bytes=${message.body.size}")
                                 continue
                             }
                             // (b) 请求判定：方法 token + "/"-开头路径。畸形行（如 "OK 200 OK"：
