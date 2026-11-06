@@ -1,0 +1,59 @@
+name: Link Plus isolated APK smoke build
+
+on:
+  push:
+    branches:
+      - test/apk-smoke-20261106
+
+permissions:
+  contents: read
+
+jobs:
+  apk-smoke:
+    name: Build unsigned-release-equivalent Buick test APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout isolated test branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required SDK packages
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;35.0.0" "ndk;27.0.12077973"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble independently-installable test APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleBuick
+
+      - name: Verify APK and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/buick/app-buick.apk
+          test -s "$apk"
+          sha256sum "$apk" | tee apk-sha256.txt
+
+      - name: Upload test APK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-plus-buick-apk-smoke
+          path: |
+            app/build/outputs/apk/buick/app-buick.apk
+            apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
