@@ -387,7 +387,7 @@ class AudioSender(
                     } catch (error: Exception) {
                         if (running.get() && syncState.owns(request)) {
                             syncState.update(request, "发送受阻，已降级，媒体发送继续")
-                            log("AUDIO: 同步包发送停止 - ${error.message}；媒体发送继续，不能据此认定车机停止消费")
+                            log("AUDIO: 同步包发送停止 running=${running.get()} stopped=${stopped.get()} syncOwned=${syncState.owns(request)} syncSocketClosed=${client.isClosed} sentSync=$syncSequence kind=${error.javaClass.simpleName} - ${error.message}；媒体发送继续，不能据此认定车机停止消费")
                         }
                     } finally {
                         client.close()
@@ -529,7 +529,7 @@ class AudioSender(
             bytesSent += wire.size
             true
         } catch (error: IOException) {
-            log("AUDIO: UDP 发送失败 - ${error.message}")
+            log("AUDIO: UDP 发送失败 running=${running.get()} stopped=${stopped.get()} socketClosed=${client.isClosed} sentMedia=$packetsSent seq=$sequence kind=${error.javaClass.simpleName} - ${error.message}")
             false
         }
     }

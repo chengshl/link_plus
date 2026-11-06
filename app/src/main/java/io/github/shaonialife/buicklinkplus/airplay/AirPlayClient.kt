@@ -20,6 +20,7 @@ import io.github.shaonialife.buicklinkplus.render.PixelArea
 import io.github.shaonialife.buicklinkplus.session.SessionTermination
 import io.github.shaonialife.buicklinkplus.util.DeviceIdentity
 import io.github.shaonialife.buicklinkplus.util.ProtocolTrace
+import io.github.shaonialife.buicklinkplus.util.ProtocolTraceFormat
 import java.io.IOException
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -537,6 +538,8 @@ class AirPlayClient(
 
     private val eventCommandLock = Any()
     private var eventCseq = 0
+    /** 本地事件序号：车机没有发送 CSeq 时仍能关联收到的请求与发出的应答，不写入线上协议。 */
+    private val inboundEventSerial = java.util.concurrent.atomic.AtomicLong(0)
 
     /** 未知请求（非 /command 的合法请求）累计数：前 10 条留痕后静默。 */
     @Volatile
@@ -614,7 +617,7 @@ class AirPlayClient(
      * 只回应车机请求并回传 CSeq，不回应响应报文，避免回声循环
      * 与 postEventCommand 共用写锁，防止加密帧交叉
      */
-    private fun respondEventRequest(cseq: String?) {
+    private fun respondEventRequest(cseq: String?, localEventId: Long) {
         val socket = eventCommandSocket ?: return
         try {
             synchronized(eventCommandLock) {
@@ -628,9 +631,10 @@ class AirPlayClient(
                     write(cipher?.encrypt(plaintext) ?: plaintext)
                     flush()
                 }
-                ProtocolTrace.event("EVENT-ACK", "cseq=${cseq?.toIntOrNull() ?: -1} status=200")
+                ProtocolTrace.event("EVENT-ACK", "local=$localEventId cseq=${cseq?.toIntOrNull() ?: -1} status=200")
             }
-        } catch (_: IOException) {
+        } catch (error: IOException) {
+            ProtocolTrace.event("EVENT-ACK-FAIL", "local=$localEventId type=${error.javaClass.simpleName}")
         }
     }
 
@@ -2296,8 +2300,10 @@ class AirPlayClient(
                             if (!isRequest) continue
                             // 车机请求：立即回 200（echo 请求 CSeq）；/command 走分发，其余节流留痕
                             val cseq = CSEQ_REGEX.find(message.head)?.groupValues?.get(1)
+                            val localEventId = inboundEventSerial.incrementAndGet()
                             ProtocolTrace.rtsp("EVENT-RX", tokens.first(), tokens[1], cseq?.toIntOrNull() ?: -1, message.body.size)
-                            respondEventRequest(cseq)
+                            ProtocolTrace.event("EVENT-RX-ID", ProtocolTraceFormat.eventCorrelation(localEventId, cseq?.toIntOrNull() ?: -1, message.body.size))
+                            respondEventRequest(cseq, localEventId)
                             if (!firstLine.contains("/command")) {
                                 unknownEventRequests++
                                 if (unknownEventRequests <= 10) {

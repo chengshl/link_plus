@@ -63,7 +63,7 @@ object GatewayAutoUpload {
         val bounded = line.take(2048)
         worker.execute {
             try {
-                if (enabled) buffer.offer(bounded)
+                if (enabled) GatewayLogPolicy.prepare(bounded)?.let(buffer::offer)
             } finally {
                 waiting.decrementAndGet()
             }
@@ -139,7 +139,7 @@ object GatewayAutoUpload {
                             GatewayProbe.State.FAILED -> "连接失败：${snapshot.failure?.name ?: "UNKNOWN"}"
                         },
                         acknowledged = snapshot.appLogLines,
-                        dropped = snapshot.droppedLogLines + buffer.dropped,
+                        dropped = snapshot.droppedLogLines,
                         heartbeat = snapshot.heartbeatCount,
                     )
                     when (snapshot.state) {

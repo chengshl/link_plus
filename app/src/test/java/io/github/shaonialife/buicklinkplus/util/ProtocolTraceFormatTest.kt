@@ -26,6 +26,15 @@ class ProtocolTraceFormatTest {
     }
 
     @Test
+    fun inboundEventUsesLocalCorrelationWhenRemoteCseqMissing() {
+        val received = ProtocolTraceFormat.eventCorrelation(42L, -1, 91)
+        val next = ProtocolTraceFormat.eventCorrelation(43L, 7, 170)
+        assertTrue(received.contains("local=42 remoteCseq=absent bytes=91"))
+        assertTrue(next.contains("local=43 remoteCseq=7 bytes=170"))
+        assertFalse(received.contains("cseq=42"))
+    }
+
+    @Test
     fun unknownCsmPayloadDoesNotLeak() {
         val trace = ProtocolTraceFormat.csm("RX", 0xaa03, "MFI_RESPONSE", "private-key".toByteArray())
         assertTrue(trace.contains("params=opaque"))

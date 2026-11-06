@@ -128,6 +128,10 @@ object ProtocolTrace {
 
 /** 仅检查 TLV 头部的 ID 和长度，不读取敏感参数值。 */
 object ProtocolTraceFormat {
+    /** 本地编号不是车机提供的 CSeq，避免把缺失的远端序号误认为协议故障。 */
+    fun eventCorrelation(localEventId: Long, remoteCseq: Int, bytes: Int): String =
+        "local=$localEventId remoteCseq=${if (remoteCseq < 0) "absent" else remoteCseq.toString()} bytes=$bytes"
+
     fun csm(direction: String, id: Int, name: String, bytes: ByteArray): String =
         "$direction id=0x${id.toString(16).padStart(4, '0')} name=$name bytes=${bytes.size} params=${shape(bytes)}"
 
