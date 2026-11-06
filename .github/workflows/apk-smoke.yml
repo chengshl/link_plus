@@ -1,16 +1,16 @@
-name: Link Plus isolated APK smoke build
+name: Link Plus protocol trace APK build
 
 on:
   push:
     branches:
-      - test/apk-smoke-20261106
+      - experiment/link-plus-protocol-trace-20261106
 
 permissions:
   contents: read
 
 jobs:
   apk-smoke:
-    name: Build unsigned-release-equivalent Buick test APK
+    name: Build isolated protocol-trace APK
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -43,22 +43,22 @@ jobs:
       - name: Assemble independently-installable test APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace :app:assembleBuick
+          ./gradlew --no-daemon --stacktrace :app:testTraceUnitTest :app:assembleTrace
 
       - name: Verify APK and SHA256
         shell: bash
         run: |
           set -euo pipefail
-          apk=app/build/outputs/apk/buick/app-buick.apk
+          apk=app/build/outputs/apk/trace/app-trace.apk
           test -s "$apk"
           sha256sum "$apk" | tee apk-sha256.txt
 
       - name: Upload test APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: link-plus-buick-apk-smoke
+          name: link-plus-protocol-trace-apk
           path: |
-            app/build/outputs/apk/buick/app-buick.apk
+            app/build/outputs/apk/trace/app-trace.apk
             apk-sha256.txt
           if-no-files-found: error
           retention-days: 7
