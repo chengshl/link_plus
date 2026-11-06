@@ -1,6 +1,7 @@
 package io.github.shaonialife.buicklinkplus.transport
 
 import io.github.shaonialife.buicklinkplus.iap2.Iap2LinkEngine
+import io.github.shaonialife.buicklinkplus.util.ProtocolTrace
 import java.io.Closeable
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
@@ -126,6 +127,7 @@ class Iap2LinkChannel(
             log("LINK: 丢弃未知会话 $sessionId 的数据帧（$size 字节）")
         }
         engine.onFrameReceived = { control, sequence, ack, sessionId, size ->
+            ProtocolTrace.linkFrame("RX", control, sequence, ack, sessionId, size)
             // 真车调试关键观测：车机在识别阶段是否回帧、回什么（静默分歧全靠它定位）
             if (rxFrameLogs < FRAME_LOG_LIMIT) {
                 rxFrameLogs++
@@ -136,6 +138,7 @@ class Iap2LinkChannel(
             }
         }
         engine.onFrameSent = { control, sequence, ack, sessionId, size ->
+            ProtocolTrace.linkFrame("TX", control, sequence, ack, sessionId, size)
             if (txFrameLogs < FRAME_LOG_LIMIT) {
                 txFrameLogs++
                 log(
