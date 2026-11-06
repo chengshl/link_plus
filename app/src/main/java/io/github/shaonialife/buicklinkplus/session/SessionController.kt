@@ -38,6 +38,7 @@ import io.github.shaonialife.buicklinkplus.shizuku.ShellServiceGate
 import io.github.shaonialife.buicklinkplus.ui.ScreenDimmer
 import io.github.shaonialife.buicklinkplus.util.Bg
 import io.github.shaonialife.buicklinkplus.util.DebugFileLog
+import io.github.shaonialife.buicklinkplus.gateway.GatewayAutoUpload
 import io.github.shaonialife.buicklinkplus.util.shellQuote
 import io.github.shaonialife.buicklinkplus.video.VideoProfile
 import io.github.shaonialife.buicklinkplus.video.VideoSender
@@ -172,6 +173,7 @@ object SessionController {
             io.github.shaonialife.buicklinkplus.util.LogRedactor
                 .redact(message.replace(0.toChar().toString(), "␀"))
         android.util.Log.i("CarPlaySender", clean)
+        GatewayAutoUpload.offer("APP $clean")
         appContext?.let {
             DebugFileLog
                 .append(it, clean)

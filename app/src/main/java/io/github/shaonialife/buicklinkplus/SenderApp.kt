@@ -10,6 +10,7 @@ import io.github.shaonialife.buicklinkplus.audio.MediaMuteController
 import io.github.shaonialife.buicklinkplus.launcher.VirtualLauncher
 import io.github.shaonialife.buicklinkplus.util.Bg
 import io.github.shaonialife.buicklinkplus.util.DebugFileLog
+import io.github.shaonialife.buicklinkplus.gateway.GatewayAutoUpload
 import io.github.shaonialife.buicklinkplus.util.ProtocolTrace
 
 /** 记录未捕获的线程异常，避免单个后台线程退出导致整个进程被关闭 */
@@ -20,6 +21,7 @@ class SenderApp : Application() {
             .initialize(this)
         // 先写本次启动标记，让日志导出能排除之前的记录
         DebugFileLog.markSessionStart(this)
+        GatewayAutoUpload.initialize(this)
         ProtocolTrace.initialize(this)
         io.github.shaonialife.buicklinkplus.ui.ScreenDimmer.enabled =
             getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("alwaysOn", false)

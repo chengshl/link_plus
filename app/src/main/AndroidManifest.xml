@@ -80,6 +80,8 @@
             </intent-filter>
         </activity>
 
+        <!-- 用户主动配置日志上传：无外部 exported 入口、独立凭证存储 -->
+        <activity android:name=".gateway.GatewaySettingsActivity" android:exported="false" />
         <activity android:name=".ui.WallpaperActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode" android:exported="false" />
 
         <!-- 车机设置（手机侧）：二级菜单页 + 内容 Fragment 宿主（与车机双栏共用面板）。

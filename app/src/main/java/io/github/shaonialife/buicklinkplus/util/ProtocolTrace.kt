@@ -3,6 +3,7 @@ package io.github.shaonialife.buicklinkplus.util
 import android.content.Context
 import android.os.SystemClock
 import io.github.shaonialife.buicklinkplus.BuildConfig
+import io.github.shaonialife.buicklinkplus.gateway.GatewayAutoUpload
 import io.github.shaonialife.buicklinkplus.iap2.Iap2MessageIds
 import java.io.File
 import java.text.SimpleDateFormat
@@ -58,6 +59,7 @@ object ProtocolTrace {
                 val loss = dropped.getAndSet(0)
                 if (loss > 0) appendLine(app, "[TRACE] backpressure-dropped=$loss")
                 appendLine(app, "+${tick}ms #$index [$tag] $safe")
+                GatewayAutoUpload.offer("TRACE +${tick}ms #$index [$tag] $safe")
             } catch (_: Exception) {
                 // 故障取证不允许干扰连接/音频/视频控制线程
             } finally {

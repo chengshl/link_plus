@@ -1220,6 +1220,22 @@ class MainActivity : GlassActivity() {
         move(heroStats, about)
         move(findViewById(R.id.advCard), about)
         move(findViewById(R.id.logCard), about)
+        // Gateway 配置入口：自动上报需要独立 token 和 WSS 地址；不改动车机运行链路。
+        val gatewaySettings = TextView(this).apply {
+            text = "Once 日志自动上报 · 设置 / 状态"
+            textSize = 16f
+            val pad = (14 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+            setOnClickListener {
+                startActivity(
+                    android.content.Intent(
+                        this@MainActivity,
+                        io.github.shaonialife.buicklinkplus.gateway.GatewaySettingsActivity::class.java,
+                    ),
+                )
+            }
+        }
+        about.addView(gatewaySettings)
         move(findViewById(R.id.btnDisclaimer), about)
         homeDashboard =
             PhoneHomeDashboard(this, detail, onOpen = { id ->

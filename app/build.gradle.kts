@@ -141,6 +141,9 @@ dependencies {
     testImplementation("org.json:json:20240303")
     //noinspection GradleDependency,NewerVersionAvailable
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // Once Gateway 的 WSS transport；不复用车机的绑定网络
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     //noinspection GradleDependency,NewerVersionAvailable
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("junit:junit:4.13.2")
