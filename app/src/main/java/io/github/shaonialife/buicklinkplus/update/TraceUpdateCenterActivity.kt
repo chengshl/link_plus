@@ -26,7 +26,7 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(28), dp(20), dp(24))
-            setBackgroundColor(background)
+            setBackgroundColor(this@TraceUpdateCenterActivity.background)
         }
         setContentView(ScrollView(this).apply { addView(root) })
         fun text(s: String, sp: Float, color: Int, bold: Boolean = false): TextView =
@@ -54,7 +54,7 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
         SwitchCompat(this).apply {
             text = "启动时自动检查更新（仅通知）"
             textSize = 15f
-            setTextColor(foreground)
+            setTextColor(this@TraceUpdateCenterActivity.foreground)
             isChecked = TraceUpdater.autoEnabled(this@TraceUpdateCenterActivity)
             setOnCheckedChangeListener { _, checked ->
                 TraceUpdater.setAutoEnabled(this@TraceUpdateCenterActivity, checked)
@@ -69,7 +69,7 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
                 cornerRadius = dp(14).toFloat()
                 setStroke(dp(1), Color.rgb(70, 85, 109))
             }
-            setTextColor(foreground)
+            setTextColor(this@TraceUpdateCenterActivity.foreground)
             root.addView(this, LinearLayout.LayoutParams(-1, dp(56)))
         }
         text("更新检查使用手机移动网络或已验证的独立互联网，不重新绑定车机 Wi-Fi。只有你确认后才下载，下载成功还会校验 SHA256、包名、版本码与固定签名，并调用 Android 系统安装器。", 14f, muted)
