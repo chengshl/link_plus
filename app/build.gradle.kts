@@ -64,6 +64,15 @@ android {
             // debug 沿用正式包名，避免内置服务需要重新配对
             versionNameSuffix = "-debug"
         }
+        // 独立取证包与已验证的 .buick 包并存，避免签名冲突或丢失已有配对信息
+        create("trace") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".buick.trace"
+            versionNameSuffix = "-trace"
+            signingConfig = signingConfigs.getByName("debug")
+            resValue("string", "app_name", "Buick Link + Trace")
+            matchingFallbacks += listOf("release")
+        }
         // buick 使用独立包名，方便与原版并存
         create("buick") {
             initWith(getByName("release"))
