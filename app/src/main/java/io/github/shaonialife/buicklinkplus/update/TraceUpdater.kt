@@ -56,7 +56,7 @@ object TraceUpdater {
             @Suppress("DEPRECATION")
             context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
         }
-        certificateDigest(pkg.signingInfo?.apkContentsSigners)?.singleOrNull()
+        certificateDigest(pkg.signingInfo?.apkContentsSigners).singleOrNull()
     }.getOrNull()
 
     fun fixedSigningInstalled(context: Context): Boolean =
