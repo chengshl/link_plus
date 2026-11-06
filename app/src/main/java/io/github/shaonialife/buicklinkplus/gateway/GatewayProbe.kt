@@ -140,7 +140,7 @@ class GatewayProbe(
                         logsSupported = reportsSupported && appLogs != null &&
                             (0 until capabilities!!.length()).any { capabilities.optString(it) == "logs_v1" }
                         vehicleSupported = logsSupported &&
-                            (0 until capabilities!!.length()).any { capabilities!!.optString(it) == "vehicle_scope_v1" }
+                            (0 until capabilities!!.length()).any { capabilities.optString(it) == "vehicle_scope_v1" }
                         if (reportsSupported) {
                             sendReportMessage(deviceInfo!!.registration())
                         } else {
