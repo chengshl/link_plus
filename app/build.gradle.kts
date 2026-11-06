@@ -21,16 +21,16 @@ val keystoreProps =
         if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
     }
 val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
-// CI 只有显式要求固定签名，且提供四项完整凭据时才允许出正式签名包。
+// 固定签名只使用三项独立密钥配置（Base64、库密码、别名）；KEY 密码复用库密码。
 // 默认 smoke 仍用临时调试签名，不得被发布为在线升级候选。
 val traceFixedSigning = providers.gradleProperty("traceFixedSigning").orNull == "true"
 val traceStoreFile = System.getenv("TRACE_SIGNING_STORE_FILE")
 val traceStorePassword = System.getenv("TRACE_SIGNING_STORE_PASSWORD")
 val traceKeyAlias = System.getenv("TRACE_SIGNING_KEY_ALIAS")
-val traceKeyPassword = System.getenv("TRACE_SIGNING_KEY_PASSWORD")
+// PKCS12 private-key password equals the keystore password (CarDeck 3-secret model).
 if (traceFixedSigning) {
     require(!traceStoreFile.isNullOrBlank() && !traceStorePassword.isNullOrBlank() &&
-        !traceKeyAlias.isNullOrBlank() && !traceKeyPassword.isNullOrBlank()) {
+        !traceKeyAlias.isNullOrBlank()) {
         "TRACE_FIXED_SIGNING_MISSING: refusing unsigned/debug fallback"
     }
 }
@@ -61,7 +61,7 @@ android {
                 storeFile = rootProject.file(traceStoreFile!!)
                 storePassword = traceStorePassword
                 keyAlias = traceKeyAlias
-                keyPassword = traceKeyPassword
+                keyPassword = traceStorePassword
             }
         }
         if (hasReleaseKeystore) {
