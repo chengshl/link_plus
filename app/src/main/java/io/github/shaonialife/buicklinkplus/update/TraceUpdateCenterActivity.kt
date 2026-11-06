@@ -17,6 +17,7 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
     private val muted = Color.rgb(159, 169, 190)
     private val background = Color.rgb(17, 22, 33)
     private val panel = Color.rgb(29, 36, 51)
+    private lateinit var checkSummary: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +52,7 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
             14f, muted,
         )
         text("更新来源由应用内部固定为 chengshl/link_plus 的 Trace 独立发布，不跨项目、不跨分支，也不允许安装旧版本。", 14f, muted)
+        checkSummary = text(TraceUpdater.lastCheckSummary(this), 14f, muted)
         SwitchCompat(this).apply {
             text = "启动时自动检查更新（仅通知）"
             textSize = 15f
@@ -58,12 +60,18 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
             isChecked = TraceUpdater.autoEnabled(this@TraceUpdateCenterActivity)
             setOnCheckedChangeListener { _, checked ->
                 TraceUpdater.setAutoEnabled(this@TraceUpdateCenterActivity, checked)
+                if (checked) TraceUpdater.maybeAutoCheck(this@TraceUpdateCenterActivity)
             }
             root.addView(this)
         }
         Button(this).apply {
             text = "立即检查最新版本"
-            setOnClickListener { TraceUpdater.check(this@TraceUpdateCenterActivity) }
+            setOnClickListener {
+                TraceUpdater.check(this@TraceUpdateCenterActivity,
+                    onFinished = {
+                        checkSummary.text = TraceUpdater.lastCheckSummary(this@TraceUpdateCenterActivity)
+                    })
+            }
             background = GradientDrawable().apply {
                 setColor(panel)
                 cornerRadius = dp(14).toFloat()
@@ -72,7 +80,18 @@ class TraceUpdateCenterActivity : AppCompatActivity() {
             setTextColor(this@TraceUpdateCenterActivity.foreground)
             root.addView(this, LinearLayout.LayoutParams(-1, dp(56)))
         }
-        text("更新检查使用手机移动网络或已验证的独立互联网，不重新绑定车机 Wi-Fi。只有你确认后才下载，下载成功还会校验 SHA256、包名、版本码与固定签名，并调用 Android 系统安装器。", 14f, muted)
+        Button(this).apply {
+            text = "安装已下载的更新包"
+            setOnClickListener { TraceUpdater.installCached(this@TraceUpdateCenterActivity) }
+            setTextColor(this@TraceUpdateCenterActivity.foreground)
+            root.addView(this, LinearLayout.LayoutParams(-1, dp(56)))
+        }
+        text("更新检查使用手机移动网络或已验证的独立互联网，不重新绑定车机 Wi-Fi。联网检查成功后间隔 24 小时；断网失败后至少 10 分钟重试。只有你确认后才下载，下载成功还会校验 SHA256、包名、版本码与固定签名，并调用 Android 系统安装器。", 14f, muted)
         text("温馨提示：正在 CarPlay 会话中请不要安装更新，先正常断开车机。Gateway 自动上报配置存储在当前应用数据中，覆盖升级通常会保留；卸载重装不会保留。", 13f, muted)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::checkSummary.isInitialized) checkSummary.text = TraceUpdater.lastCheckSummary(this)
     }
 }

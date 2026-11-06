@@ -20,6 +20,9 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.text.DateFormat
+import java.util.Date
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
@@ -32,9 +35,11 @@ import kotlin.concurrent.thread
 object TraceUpdater {
     private const val PREFS = "link_plus_trace_updater"
     private const val KEY_AUTO = "auto_check"
-    private const val KEY_LAST = "last_check_ms"
-    private const val CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
+    private const val KEY_LAST_ATTEMPT = "last_attempt_check_ms"
+    private const val KEY_LAST_SUCCESS = "last_success_check_ms"
+    private const val KEY_LAST_RESULT = "last_check_result"
     private val main = Handler(Looper.getMainLooper())
+    private val checking = AtomicBoolean(false)
 
     fun autoEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, 0).getBoolean(KEY_AUTO, false)
@@ -65,18 +70,41 @@ object TraceUpdater {
     fun maybeAutoCheck(activity: Activity) {
         if (!autoEnabled(activity)) return
         val pref = activity.getSharedPreferences(PREFS, 0)
-        val now = System.currentTimeMillis()
-        if (now - pref.getLong(KEY_LAST, 0L) < CHECK_INTERVAL_MS) return
-        pref.edit().putLong(KEY_LAST, now).apply()
+        if (!TraceUpdateCheckPolicy.shouldAutoCheck(
+                System.currentTimeMillis(),
+                pref.getLong(KEY_LAST_SUCCESS, 0L),
+                pref.getLong(KEY_LAST_ATTEMPT, 0L),
+            )) return
         check(activity, silent = true)
     }
 
-    fun check(activity: Activity, silent: Boolean = false) {
+    fun lastCheckSummary(context: Context): String {
+        val pref = context.getSharedPreferences(PREFS, 0)
+        val last = pref.getLong(KEY_LAST_ATTEMPT, 0L)
+        if (last <= 0) return "更新检查：尚未执行"
+        val time = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(last))
+        return when (pref.getString(KEY_LAST_RESULT, "")) {
+            "success" -> "最近检查：$time · 成功"
+            "failure" -> "最近检查：$time · 失败（自动检查将在至少 10 分钟后重试）"
+            else -> "最近检查：$time · 检查中"
+        }
+    }
+
+    fun check(activity: Activity, silent: Boolean = false, onFinished: (() -> Unit)? = null) {
+        if (!checking.compareAndSet(false, true)) {
+            if (!silent) ui(activity) { showMessage(activity, "软件更新", "正在检查更新，请勿重复操作。") }
+            return
+        }
+        val prefs = activity.getSharedPreferences(PREFS, 0)
+        prefs.edit().putLong(KEY_LAST_ATTEMPT, System.currentTimeMillis())
+            .putString(KEY_LAST_RESULT, "checking").apply()
         thread(name = "trace-update-check") {
             try {
                 val json = JSONArray(fetchText(activity, TraceReleasePolicy.RELEASES_URL, 2 * 1024 * 1024))
                 val installed = installedVersion(activity)
                 val match = TraceReleasePolicy.newest(json, installed)
+                prefs.edit().putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
+                    .putString(KEY_LAST_RESULT, "success").apply()
                 ui(activity) {
                     when {
                         match == null && !silent -> showMessage(activity, "软件更新", "当前没有符合 Trace 固定签名通道的更高版本。已安装版本码：$installed。")
@@ -98,7 +126,11 @@ object TraceUpdater {
                     }
                 }
             } catch (error: Exception) {
+                prefs.edit().putString(KEY_LAST_RESULT, "failure").apply()
                 if (!silent) ui(activity) { showMessage(activity, "检查失败", "无法检查更新：${error.javaClass.simpleName}（${error.message?.take(150)}）") }
+            } finally {
+                checking.set(false)
+                if (onFinished != null) ui(activity) { onFinished() }
             }
         }
     }
@@ -230,6 +262,42 @@ object TraceUpdater {
             } catch (error: Exception) {
                 temporary.delete()
                 ui(activity) { showMessage(activity, "升级失败", "已拒绝不符合要求的安装包：${error.message?.take(180)}") }
+            }
+        }
+    }
+
+    /**
+     * Recovery after the user grants REQUEST_INSTALL_PACKAGES: reuse only an
+     * APK whose hash, release metadata, package, version and certificate all
+     * validate again. Do not trust a stale file merely because it exists.
+     */
+    fun installCached(activity: Activity) {
+        thread(name = "trace-update-verify-cache") {
+            try {
+                val releases = JSONArray(fetchText(activity, TraceReleasePolicy.RELEASES_URL, 2 * 1024 * 1024))
+                val candidate = TraceReleasePolicy.newest(releases, installedVersion(activity))
+                    ?: throw IllegalStateException("当前没有可安装的更高版本")
+                val target = File(activity.cacheDir, "trace-updates/${candidate.tag}/${TraceReleasePolicy.APK_NAME}")
+                require(target.isFile && target.length() > 0L && target.length() <= 250L * 1024 * 1024) {
+                    "没有缓存的更新包，请先下载"
+                }
+                val digest = MessageDigest.getInstance("SHA-256")
+                target.inputStream().use { input ->
+                    val bytes = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(bytes)
+                        if (n < 0) break
+                        if (n > 0) digest.update(bytes, 0, n)
+                    }
+                }
+                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                require(actual == candidate.digest) { "缓存 SHA256 校验失败" }
+                verifyArchive(activity, target, candidate)
+                ui(activity) { promptInstall(activity, target) }
+            } catch (error: Exception) {
+                ui(activity) {
+                    showMessage(activity, "缓存安装不可用", "${error.message?.take(180)}。可重新点击检查更新并下载。")
+                }
             }
         }
     }

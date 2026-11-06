@@ -9,7 +9,7 @@ plugins {
  * 版本名可以重置，版本码始终递增，保证覆盖安装
  */
 val appVersionName = "0.0.9"
-val appVersionCode = 154
+val appVersionCode = 155
 
 /**
  * 从根目录的 keystore.properties 读取签名，缺少时使用 debug 签名
@@ -89,7 +89,7 @@ android {
         create("trace") {
             initWith(getByName("release"))
             applicationIdSuffix = ".buick.trace"
-            versionNameSuffix = "-trace-r3"
+            versionNameSuffix = "-trace-r4"
             signingConfig = signingConfigs.getByName(if (traceFixedSigning) "traceFixed" else "debug")
             resValue("string", "app_name", "Buick Link + Trace")
             matchingFallbacks += listOf("release")
