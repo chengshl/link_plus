@@ -40,6 +40,7 @@ class GatewayNetworkRoute private constructor(
 
     companion object {
         /** 在后台线程创建，以免初始化 TLS 信任存储阻塞界面。 */
+        @Suppress("DEPRECATION")
         fun create(context: Context): GatewayNetworkRoute {
             val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val network = manager.allNetworks.mapNotNull { candidate ->

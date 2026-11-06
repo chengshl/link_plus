@@ -33,7 +33,7 @@ class GatewayLogBuffer(
     @Synchronized
     fun takeTagged(): List<TaggedLine> = buildList {
         val first = lines.peekFirst()?.vehicleId
-        while (size < 8 && lines.isNotEmpty() && lines.peekFirst().vehicleId == first) {
+        while (size < 8 && lines.isNotEmpty() && lines.peekFirst()?.vehicleId == first) {
             add(lines.removeFirst())
         }
     }
