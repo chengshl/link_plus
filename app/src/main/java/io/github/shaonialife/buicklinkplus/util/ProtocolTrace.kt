@@ -50,10 +50,11 @@ object ProtocolTrace {
         }
         val index = sequence.incrementAndGet()
         val tick = SystemClock.elapsedRealtime()
-        val safe = LogRedactor.redact(detail.replace('\n', ' ').replace('\r', ' ')).take(1024)
+        val raw = detail.replace('\n', ' ').replace('\r', ' ').take(2048)
         val tag = source.filter { it.isLetterOrDigit() || it == '-' }.take(32)
         writer.execute {
             try {
+                val safe = LogRedactor.redact(raw).take(1024)
                 val loss = dropped.getAndSet(0)
                 if (loss > 0) appendLine(app, "[TRACE] backpressure-dropped=$loss")
                 appendLine(app, "+${tick}ms #$index [$tag] $safe")
