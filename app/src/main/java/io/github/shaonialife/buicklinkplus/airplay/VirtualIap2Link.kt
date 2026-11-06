@@ -8,6 +8,7 @@ import io.github.shaonialife.buicklinkplus.iap2.MfiCertificateHint
 import io.github.shaonialife.buicklinkplus.iap2.MfiLengthMemory
 import io.github.shaonialife.buicklinkplus.iap2.ReceiverProfile
 import io.github.shaonialife.buicklinkplus.input.ConsumerKeys
+import io.github.shaonialife.buicklinkplus.util.ProtocolTrace
 import java.security.SecureRandom
 import java.util.TimeZone
 import java.util.UUID
@@ -178,9 +179,11 @@ class VirtualIap2Link(
             log("IAPLINK: 对端窗口=${peer.maxOutgoing} 最大帧=${peer.maxLength} 重传=${peer.maxRetransmissions} 会话=${peer.sessions}")
         }
         engine.onFrameReceived = { control, sequence, ack, session, size ->
+            ProtocolTrace.linkFrame("VIRTUAL-RX", control, sequence, ack, session, size)
             noteFrameLocked("收", control, sequence, ack, session, size)
         }
         engine.onFrameSent = { control, sequence, ack, session, size ->
+            ProtocolTrace.linkFrame("VIRTUAL-TX", control, sequence, ack, session, size)
             noteFrameLocked("发", control, sequence, ack, session, size)
         }
         pacer =
@@ -537,6 +540,7 @@ class VirtualIap2Link(
         body: ByteArray = ByteArray(0),
     ) {
         val frame = Iap2Csm.encode(messageId, body)
+        ProtocolTrace.csm("VIRTUAL-TX", messageId, body)
         val ok = engine.sendControl(frame, nowMillis())
         log(
             "IAPLINK: 隧道 tx 0x${messageId.toString(16)} " +
@@ -548,6 +552,7 @@ class VirtualIap2Link(
     private fun sendRawCsmLocked(frame: ByteArray) {
         val ok = engine.sendControl(frame, nowMillis())
         val messageId = ((frame[4].toInt() and 0xFF) shl 8) or (frame[5].toInt() and 0xFF)
+        ProtocolTrace.csm("VIRTUAL-TX-RAW", messageId, frame.copyOfRange(Iap2Csm.HEADER_BYTES, frame.size))
         log(
             "IAPLINK: 隧道 tx 0x${messageId.toString(16)} " +
                 "(${Iap2MessageIds.nameOf(messageId)}) ${frame.size}B raw ok=$ok",
@@ -871,8 +876,9 @@ class VirtualIap2Link(
         frameCount++
         val frames = parser.offer(bytes)
         for (frame in frames) {
-            val hex = frame.body.joinToString(" ") { "%02x".format(it) }
+            ProtocolTrace.csm("VIRTUAL-RX", frame.messageId, frame.body)
             if (frameCount <= 30 || frameCount % 100 == 0) {
+                val hex = frame.body.joinToString(" ") { "%02x".format(it) }
                 log(
                     "IAPLINK: rx 0x${frame.messageId.toString(16)} " +
                         "(${Iap2MessageIds.nameOf(frame.messageId)}) ${frame.body.size}B hex=${hex.take(160)}",
