@@ -27,13 +27,23 @@ class TraceReleaseContractTest(unittest.TestCase):
         self.assertNotIn("TRACE_SIGNING_PUBLISH_APPROVED", self.workflow)
         self.assertIn("keyPassword = traceStorePassword", self.gradle)
 
-    def test_manual_tag_is_only_release_trigger(self):
-        self.assertIn("on:\n  push:\n    tags:\n      - 'trace-publish-request-v*'", self.workflow)
-        self.assertNotIn("    branches:\n", self.workflow)
-        self.assertIn('expected_request="trace-publish-request-v${version_code}-${GITHUB_SHA:0:12}"', self.workflow)
+    def test_auto_signed_release_only_for_experiment_runtime(self):
+        self.assertIn(
+            "on:\n  push:\n    branches:\n      - experiment/link-plus-trace-fixed-update-20261107",
+            self.workflow,
+        )
+        self.assertIn("      - 'app/src/main/**'", self.workflow)
+        self.assertIn("      - 'app/build.gradle.kts'", self.workflow)
+        self.assertIn("      - '.github/workflows/trace-fixed-release.yml'", self.workflow)
+        self.assertNotIn("trace-publish-request-v", self.workflow)
+        self.assertNotIn("    tags:\n", self.workflow)
+        self.assertIn('id: release_gate', self.workflow)
+        self.assertIn('if: steps.release_gate.outputs.publish == \'true\'', self.workflow)
         self.assertIn('"$GITHUB_SHA" == "$branch_sha"', self.workflow)
-        self.assertIn('"$version_code" -gt "$max_released"', self.workflow)
-        self.assertIn("REQUEST_VERSION=$version_code", self.workflow)
+        self.assertIn("if (( version_code <= max_released )); then", self.workflow)
+        self.assertIn('publish=false', self.workflow)
+        self.assertIn('publish=true', self.workflow)
+        self.assertIn("Branch advanced during build", self.workflow)
 
     def test_release_metadata_and_identity_are_fenced(self):
         for value in (

@@ -32,32 +32,36 @@
 
 Gradle 现在使用 `keyPassword = traceStorePassword`。因此不再读取旧的 `TRACE_SIGNING_KEY_PASSWORD` 与 `TRACE_SIGNING_PUBLISH_APPROVED` 两项 Secret；如果仓库仍保留它们，不影响当前工作流，但请先核对新的三项密钥和 v154 证书一致，再由管理员择机清理闲置 Secret。**不能公开任何 .p12、密码或 Base64，不能把 CarDeck 的密钥直接换成 Trace 密钥。**
 
-## 后续发布：手动推送一次受控请求 Tag
+## 后续自动发布：提交代码 → CI → 固定签名 → Release
 
-本仓库 `main` 保持上游同步，不往 `main` 写发布工作流。GitHub 的 `workflow_dispatch` 依赖 workflow 在默认分支，所以本实验专用发布改为 **手动创建+推送请求 Tag**；正常源代码 `push` 只触发 smoke CI，**绝不自动签名发布**。
+2026-11-07 用户明确要求恢复之前不需要人工推送 Tag 的自动发布方式，并继续只使用三项固定签名 Secrets。
 
-仅当新代码经过独立 CI 审查、确有高于已发布 154 的 `versionCode` 后，在已登录的本地 Git 环境执行：
+`experiment/link-plus-trace-fixed-update-20261107` 现在通过 `push` 触发本分支专用签名工作流，触发路径仅为：
+- `app/src/main/**`：Android 应用运行代码、资源或配置有变更；
+- `app/build.gradle.kts`：应用构建配置（包括 versionCode）有变更；
+- `.github/workflows/trace-fixed-release.yml`：修复该工作流本身，允许重新核对未发的版本。
 
-```bash
-set -Eeuo pipefail
-git fetch origin experiment/link-plus-trace-fixed-update-20261107
-git switch experiment/link-plus-trace-fixed-update-20261107
-git pull --ff-only origin experiment/link-plus-trace-fixed-update-20261107
-CODE="$(sed -nE 's/^val appVersionCode = ([0-9]+)$/\1/p' app/build.gradle.kts)"
-HEAD="$(git rev-parse HEAD)"
-test "$CODE" -gt 154
-REQUEST_TAG="trace-publish-request-v${CODE}-${HEAD:0:12}"
-echo "申请发布：$REQUEST_TAG"
-git tag "$REQUEST_TAG" "$HEAD"
-git push origin "refs/tags/$REQUEST_TAG"
-```
+`docs/**`、纯单元测试、Fork 的 `main` 和其他实验分支**不触发固定签名发布**。即使触发，版本不高于已发布版本，也会只记录 `publish=false` 并跳过编译签名和发布，不制造重复/降级 APK。
 
-这个精确 Tag 推送**就是单次发布确认**。工作流必须核对请求 Tag 版本码和源码 SHA、对应实验分支最新 HEAD、GitHub 已有版本最大值、固定签名 Secret/指纹，才执行：
-`testTraceUnitTest → assembleTrace → apksigner + package/version → SHA256 → immutable schema-2 prerelease`。
-请求内容不符合条件则 STOP；旧 v154、其他实验、正式 CarDeck 和 Fork `main` 不被触碰。**本轮仅修改发布门禁和 Secret 数量，不创建新的请求 Tag，也不重新发布 v154。**
+只有预检满足以下条件，工作流才自动继续：
+1. `github.ref` 精确为 `refs/heads/experiment/link-plus-trace-fixed-update-20261107`，提交 SHA 与该分支当前 HEAD 完全相同（避免较早的 CI 竞态发布）。
+2. `appVersionCode` 是有效整数，且**严格高于**当前仓库已发布 Trace 独立 Release 的最大版本码；v154 已发布，首次新版本应是 v155。
+3. 固定签名的三项 GitHub Secrets 均存在，证书 SHA256 精确匹配 `3fc11b60da53fd634d668bde7f7e9e19f6ed042d59502de2797b949e53e482e3`，不允许 debug 签名作为回退。
+4. `testTraceUnitTest`、`assembleTrace`、APK 签名校验、applicationId、versionCode、SHA256 全部通过，发布前再次检查当前分支 HEAD，且同 tag 尚不存在。
+
+通过后自动发布**全新的** `exp-link-plus-trace-v<versionCode>-<commit12>` 独立 prerelease，包含 `LinkPlus-Trace.apk`、对应 `.sha256` 与 schema-2 源码/证书元数据；不可覆盖旧 v154 Release。不会自行执行 Android 手机端安装，手机端仍是自动检查可选、提示后用户确认下载和系统安装器。
+
+这里的“自动发布”是 GitHub Actions 无需用户人工 Tag 的仓库级流程；**不等于绕过手机系统安装确认**。如果新提交没有递增 versionCode，将跳过固定签名发行（可运行 smoke CI），不能靠反复提交相同版本制造新包。
+
+## 本次 v155 验收与回退
+
+- v155 代码 `87625a291b3e2e4b0e61c55834f182b078f33093` 已通过独立 debug smoke CI [#42289536473](https://github.com/chengshl/link_plus/actions/runs/42289536473)；在本轮自动发布工作流提交前，固定签名 v155 尚未发布。
+- 自动签名 CI 和新 Release 真正出现后，从**现有固定签名 v154** 的软件更新页检查并安装 v155，不卸载，不清除数据。确认版本和原 Gateway 地址/令牌保留。
+- 后续查验缺网失败后的重试（至少 10 分钟且下一次应用进入前台）、缓存 APK 授权中断后再次校验安装、停车状态锁屏触控及音频实车回归。
+- 若 CI 失败，保持 v154 可下载及现有安装不变；Android 同包高版本不能无损降级旧包，不通过卸载抹除配置来冒充无损回滚。
 
 ## 首次迁移与回退
 - 目前安装的 `.buick.trace` 是 GitHub Runner 临时 debug 签名，不能覆盖升级到本固定签名。**只有第一次**需先导出日志、记录 Gateway WSS 地址与令牌，再卸载旧 Trace 并从 GitHub 首次固定签名 Release 安装；不卸载、不中断已验证正常的 `.buick` 应用。不同签名不能继承旧 Trace 私有 Android Keystore 配置。
 - 首个固定签名版安装后，未来的固定签名版用同包名与更高 versionCode 可覆盖升级并保留 Gateway 配置；如果失去密钥，不能继续无损升级。
 - 初次签名 Release 的 CI 成功不代表手机自动更新与车机回归成功；先在停车条件下验证手动检查、无候选、断网、错 SHA/包名/签名、覆盖升级与音频/触控保持原样。
-- 固定签名发行操作需要管理员手动创建请求 Tag，保持仓库 main 不受影响；不自动修改或清理服务器、已上传 Gateway 日志与既有 Release。
+- 固定签名发布由受控分支运行代码或构建配置更新自动触发，只有版本递增且全部门禁通过时发布；Fork main、既有 Release、已上传 Gateway 日志不变。

@@ -1,11 +1,16 @@
 name: Link Plus Trace fixed-signed prerelease
 
-# 发布必须由人手工创建精确的 request tag；源码 push 不触发签名/发布。
-# GitHub workflow_dispatch 在工作流不在 default branch 时不能可靠触发，因此使用 tag push。
+# 仅独立 Trace 实验分支运行；应用/构建配置变更后自动进行测试、固定签名和版本发布。
+# workflow 自身的修复允许触发一次核对，但版本未提升时只跳过发行。
+# docs/**、仅测试文件、main 上游同步不会触发签名发布。
 on:
   push:
-    tags:
-      - 'trace-publish-request-v*'
+    branches:
+      - experiment/link-plus-trace-fixed-update-20261107
+    paths:
+      - 'app/src/main/**'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/trace-fixed-release.yml'
 
 permissions:
   contents: write
@@ -16,7 +21,7 @@ concurrency:
 
 jobs:
   signed-trace:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/experiment/link-plus-trace-fixed-update-20261107'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -32,43 +37,46 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify explicit release request and monotonic version
+      - name: Verify isolated branch, version and Release eligibility
+        id: release_gate
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -Eeuo pipefail
           SOURCE_BRANCH='experiment/link-plus-trace-fixed-update-20261107'
-          [[ "$GITHUB_REF_TYPE" == tag ]] || { echo "::error::Requires a manually-created request tag"; exit 2; }
-          # Prevent signing a detached, unreviewed or stale commit. Current HEAD must be the tag target.
+          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == "$SOURCE_BRANCH" ]] || {
+            echo "::error::Refusing non-experiment branch build"
+            exit 2
+          }
+          # Fail closed when rapid commits supersede this run; never publish a stale build.
           branch_sha="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | cut -f1)"
           [[ -n "$branch_sha" && "$GITHUB_SHA" == "$branch_sha" ]] || {
-            echo "::error::Request target is not current reviewed experiment branch HEAD"
+            echo "::error::The source branch has advanced; do not publish stale commit"
             exit 2
           }
           version_code="$(sed -nE 's/^val appVersionCode = ([0-9]+)$/\1/p' app/build.gradle.kts)"
           [[ "$version_code" =~ ^[0-9]+$ ]] || { echo "::error::Invalid versionCode"; exit 2; }
-          expected_request="trace-publish-request-v${version_code}-${GITHUB_SHA:0:12}"
-          [[ "$GITHUB_REF_NAME" == "$expected_request" ]] || {
-            echo "::error::Invalid request tag. Expected $expected_request"
-            exit 2
-          }
           # Existing v154 is immutable, and no release may reuse or downgrade any known versionCode.
           max_released="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq             '[.[] | .tag_name | select(test("^exp-link-plus-trace-v[0-9]+-[0-9a-f]{12}$")) | capture("-v(?<code>[0-9]+)-").code | tonumber] | max // 0')"
-          [[ "$version_code" -gt "$max_released" ]] || {
-            echo "::error::Nonmonotonic release versionCode=$version_code, latest=$max_released"
-            exit 3
-          }
+          if (( version_code <= max_released )); then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Trace version $version_code not newer than released version $max_released; skip signing and publishing."
+            exit 0
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "REQUEST_VERSION=$version_code" >> "$GITHUB_ENV"
-          echo "Preflight passed for manually requested Trace version $version_code"
+          echo "Auto-release approved by version increase: $max_released -> $version_code"
 
       - name: Install JDK 17
+        if: steps.release_gate.outputs.publish == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: SDK packages
+        if: steps.release_gate.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -80,9 +88,11 @@ jobs:
           "$SDKMANAGER" --install "platforms;android-34" "build-tools;35.0.0" "ndk;27.0.12077973"
 
       - name: Configure Gradle
+        if: steps.release_gate.outputs.publish == 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: Require stable private signing material
+        if: steps.release_gate.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -100,6 +110,7 @@ jobs:
           keytool -list -v -keystore "$keyfile" -storetype PKCS12 -storepass "$TRACE_SIGNING_STORE_PASSWORD"             | grep 'SHA256:' | tr -d ':' | tr '[:upper:]' '[:lower:]'             | grep -q "$EXPECTED_CERT_SHA256" || { echo "::error::Fixed signing certificate fingerprint mismatch"; exit 3; }
 
       - name: Compile tests and FIXED-SIGNED Trace APK
+        if: steps.release_gate.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -107,6 +118,7 @@ jobs:
           ./gradlew --no-daemon --stacktrace -PtraceFixedSigning=true :app:testTraceUnitTest :app:assembleTrace
 
       - name: Verify exact signed APK identity and SHA256
+        if: steps.release_gate.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -131,11 +143,16 @@ jobs:
           cat "dist/$APK_NAME.sha256"
 
       - name: Publish immutable schema-2 trace prerelease
+        if: steps.release_gate.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          # Revalidate the branch lease immediately before release to avoid signing a stale build.
+          SOURCE_BRANCH='experiment/link-plus-trace-fixed-update-20261107'
+          latest_sha="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | cut -f1)"
+          [[ "$latest_sha" == "$GITHUB_SHA" ]] || { echo "::error::Branch advanced during build"; exit 5; }
           shortsha="${GITHUB_SHA:0:12}"
           tag="exp-link-plus-trace-v${EXPECTED_VERSION_CODE}-${shortsha}"
           if gh release view "$tag" >/dev/null 2>&1; then
